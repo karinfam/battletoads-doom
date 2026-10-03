@@ -4,6 +4,10 @@
 // Changes: same-origin router, Freedoom plus toads.wad, hashed WAD loading,
 // invite links as ?room=, mode toggle, no touch controls.
 
+// Everything lives in one function scope: the engine script declares many
+// globals of its own (runtimeInitialized, run, exit...) and a clash stops it
+// from loading. Only Module is shared with it.
+(() => {
 const hasWebAssembly = () => {
     try {
         if (typeof WebAssembly === "object" && typeof WebAssembly.instantiate === "function") {
@@ -88,7 +92,7 @@ const CONTROLS = ["MOVE = MOUSE, WSOP OR ARROWS, SHIFT = RUN, E = USE, AD = STRA
 const DROPPED = "A player dropped. If the game stalls, start a new room from the front page.";
 
 // The engine reads the base game and the mod from its virtual filesystem.
-var commonArgs = ["-iwad", "freedoom1.wad", "-window", "-nogui", "-nomusic", "-config", "default.cfg", "-servername", "doomflare", "-nodes", "4"];
+let commonArgs = ["-iwad", "freedoom1.wad", "-window", "-nogui", "-nomusic", "-config", "default.cfg", "-servername", "doomflare", "-nodes", "4"];
 if (WADS.files.some((f) => f.name === "toads.wad")) commonArgs = commonArgs.concat(["-merge", "toads.wad"]);
 
 // Both WADs are fetched by their hashed names (in parts, when a file is too
@@ -252,7 +256,7 @@ if (hasWebAssembly()) {
     const invited = new URLSearchParams(window.location.search).get("room");
     if (invited && ROOM_PATTERN.test(invited)) room = invited;
 
-    var Module = {
+    window.Module = {
         onRuntimeInitialized: () => {
             runtimeReady();
             if (room) {
@@ -361,3 +365,4 @@ if (hasWebAssembly()) {
     display(["canvas"], "none");
     write('<h1 class="vspace">Your browser has no WebAssembly support</h1><h1 class="vspace">You need a modern browser to play</h1>');
 }
+})();

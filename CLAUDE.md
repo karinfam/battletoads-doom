@@ -50,12 +50,15 @@ From the answers under Open questions in the doc (3 Oct 2026):
 - **M1 done for Freedoom.** Placeholder `TROO`, `PLAY`, `PUNG` and `STF*` lumps show in game under `-merge` with no sprite errors. Still to do: the same run against a purchased `iwads/doom.wad`.
   - Rotation 0 lumps do replace eight-angle originals: `-merge` drops the IWAD's angled lumps for that frame. No eight-angle fallback needed.
   - DeuTex's default `SS_START`/`SS_END` markers load cleanly. `build-wad --s-end` is there but not needed.
-- **M2 and M3 blocked on the engine build.** The site, lobby and local router are written; the router passes its contract test locally and under `wrangler dev`. Nothing has run in a browser yet.
-- **M4** needs a Cloudflare account, a domain and `DOOM_KEY`.
+- **M2 done.** The engine compiles in the `engine` GitHub Actions workflow with Emscripten 2.0.23, unmodified. The browser build runs Freedoom with `toads.wad` merged from `node scripts/dev-server`. Seen in the browser: the placeholder face and player sprites. The imp was only looked at on desktop.
+- **M3 done.** Two browser tabs joined one room through the local router and saw each other's placeholder player in a co-op game on E1M1.
+- **M4 not started.** Needs a Cloudflare account, a domain and `DOOM_KEY`. The Worker (site + router) passes the router contract under `wrangler dev`; it has never been deployed.
+
+To get the engine on a new machine: `gh run download --name engine --dir build/engine` (latest successful `engine` run), then `node scripts/build-site`.
 
 ## Findings worth knowing
 
 - `freedoom1.wad` is 28.8 MB, over Cloudflare's 25 MiB per-file limit for static assets. `build-site` splits big WADs into parts and `site/lobby.js` joins them before the engine starts.
-- The engine's build flags (`EXTRA_EXPORTED_RUNTIME_METHODS`) are rejected by current Emscripten, so `engine.emsdk-version` pins a 2021 release.
-- DeuTex finds an IWAD only by fixed file names. `build-wad` gives it a small `doom.wad` in `build/stage/` holding the chosen IWAD's palette.
+- The engine's build flags (`EXTRA_EXPORTED_RUNTIME_METHODS`) are rejected by current Emscripten, so `engine.emsdk-version` pins a 2021 release. Current Emscripten was not tried.
+- `site/lobby.js` is wrapped in one function scope on purpose: the engine script declares globals such as `runtimeInitialized`, and a clashing `const` in the lobby stops the engine from loading.- DeuTex finds an IWAD only by fixed file names. `build-wad` gives it a small `doom.wad` in `build/stage/` holding the chosen IWAD's palette.
 - Shareware `doom1.wad` cannot be the base game: the engine refuses any modified game on shareware (`d_main.c`).
