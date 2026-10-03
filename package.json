@@ -17,6 +17,7 @@
     "test": "node --test"
   },
   "devDependencies": {
+    "sharp": "^0.35.5",
     "wrangler": "^4.147.0",
     "ws": "^8.22.0"
   },

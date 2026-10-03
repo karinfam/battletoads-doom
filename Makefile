@@ -2,15 +2,14 @@
 # commands work from make, from `npm run <target>` and on Windows.
 #
 #   IWAD=iwads/doom.wad        base game for wad, run and check (default: Freedoom)
-#   PLACEHOLDERS="TROO PLAY"   prefixes to fill with generated test art
+#   PLACEHOLDERS="p0 TROO"     prefixes to fill with labelled test art where real art
+#                              is missing (default: p0, the player lumps; "none"
+#                              for a strict build)
 #   ARGS="-warp 1 3 -nosound"  extra arguments for make run
 
 IWAD ?= iwads/freedoom1.wad
 PLACEHOLDERS ?=
 ARGS ?=
-
-# P0 lumps from the design doc: player body, fist, status bar face.
-P0 = PLAY PUNG STFST STFTL STFTR STFOUCH STFEVL STFKILL STFGOD STFDEAD
 
 export IWAD PLACEHOLDERS ARGS
 
@@ -26,7 +25,7 @@ check:
 	node scripts/check-assets
 
 check-p0:
-	node scripts/check-assets --require "$(P0)"
+	node scripts/check-assets --require p0
 
 wad:
 	node scripts/build-wad

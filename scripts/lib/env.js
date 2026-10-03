@@ -11,6 +11,18 @@ const rel = (...parts) => path.join(ROOT, ...parts)
 const FREEDOOM_VERSION = '0.13.0'
 const DEFAULT_IWAD = rel('iwads', 'freedoom1.wad')
 
+// The lumps toads.wad replaces: player body, fist and every status bar face.
+// STFB* (the face background) is left alone.
+const P0_PREFIXES = ['PLAY', 'PUNG', 'STFST', 'STFTL', 'STFTR', 'STFOUCH', 'STFEVL', 'STFKILL', 'STFGOD', 'STFDEAD']
+
+// "p0" in a prefix list stands for the whole set above.
+function parsePrefixes(text) {
+  return (text || '')
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .flatMap((p) => (p.toLowerCase() === 'p0' ? P0_PREFIXES : [p.toUpperCase()]))
+}
+
 // Options are --name value or --flag; everything else is positional.
 function parseArgs(argv, valueOptions = []) {
   const opts = {}
@@ -56,4 +68,4 @@ function fail(message) {
   process.exit(1)
 }
 
-module.exports = { ROOT, rel, FREEDOOM_VERSION, DEFAULT_IWAD, parseArgs, resolveIwad, findTool, fail }
+module.exports = { ROOT, rel, FREEDOOM_VERSION, DEFAULT_IWAD, P0_PREFIXES, parsePrefixes, parseArgs, resolveIwad, findTool, fail }

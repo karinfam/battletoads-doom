@@ -10,8 +10,9 @@ Every target is a Node script in `scripts/`, so `make <target>`, `npm run <targe
 | --- | --- |
 | `node scripts/fetch-freedoom` | Downloads the pinned Freedoom into `iwads/`. |
 | `node scripts/fetch-tools` | Windows only: pinned Chocolate Doom and DeuTex into `tools/`. |
-| `node scripts/check-assets` | Compares `assets/` to the IWAD's frame list. `--require "PLAY PUNG"` to demand prefixes. |
-| `node scripts/build-wad` | Checks assets, then builds `build/toads.wad` with DeuTex. `--placeholders "TROO PLAY"` adds generated test art. |
+| `node scripts/check-assets` | Compares `assets/` to the IWAD's frame list. `--require p0` demands all 69 player lumps. |
+| `node scripts/import-art <image> <LUMP>` | Turns an image on a magenta background into Doom-scale art in `assets/`. See [docs/art.md](docs/art.md). |
+| `node scripts/build-wad` | Checks assets, then builds `build/toads.wad` with DeuTex. Player lumps without art get labelled placeholders; `--placeholders none` is the strict release build, `--placeholders "p0 TROO"` adds a test imp. |
 | `node scripts/run-doom` | Desktop Chocolate Doom with the WAD merged. `--iwad iwads/doom.wad` picks the base game. |
 | `node scripts/build-engine` | Compiles `engine/` (needs emcc + bash, or Docker). On this machine use the `engine` GitHub Actions workflow and unpack its artifact into `build/engine/`. |
 | `node scripts/build-site` | Assembles `dist/` with hashed WAD names. |
@@ -42,22 +43,28 @@ From the answers under Open questions in the doc (3 Oct 2026):
 - **Player toad**: whichever is available. **Art**: redrawn at Doom scale, not upscaled.
 - **Default mode** is co-op, with deathmatch as a toggle in the lobby.
 - **Hosting** is Cloudflare, one Worker for site and router. Domain and account are still open.
-- Still open: custom sounds or music, and what "original Doom monsters" means in the browser, where the base game is Freedoom and so shows Freedoom's monsters.
+- **Monsters in the browser** are Freedoom's, since Freedoom is the base game there (confirmed by Karin, 3 Oct 2026). Real Doom monsters only appear on desktop with a purchased `doom.wad`.
+- **Art comes from an AI generator**, imported through `scripts/import-art` (Karin, 3 Oct 2026). Which generator is still open: Karin wants to see samples first.
+- **The look is chosen**: `art-samples/body-pixel.png` (pixel-art toad with shades, spiked wristbands, knee pads, yellow belly) is the reference for all toad art (Karin, 3 Oct 2026). Give it to the generator as the reference image.
+- Still open: custom sounds or music.
 
 ## Status
 
 - **M0 done.** Freedoom 0.13.0 runs in desktop Chocolate Doom 3.1.1.
-- **M1 done for Freedoom.** Placeholder `TROO`, `PLAY`, `PUNG` and `STF*` lumps show in game under `-merge` with no sprite errors. Still to do: the same run against a purchased `iwads/doom.wad`.
+- **M1 done.** Placeholder `TROO`, `PLAY`, `PUNG` and `STF*` lumps load under `-merge` with no sprite errors on both `freedoom1.wad` and the purchased `doom.wad`. The imp was seen on screen with Freedoom; with `doom.wad` the face and player sprites were seen, the imp only loaded cleanly.
   - Rotation 0 lumps do replace eight-angle originals: `-merge` drops the IWAD's angled lumps for that frame. No eight-angle fallback needed.
   - DeuTex's default `SS_START`/`SS_END` markers load cleanly. `build-wad --s-end` is there but not needed.
 - **M2 done.** The engine compiles in the `engine` GitHub Actions workflow with Emscripten 2.0.23, unmodified. The browser build runs Freedoom with `toads.wad` merged from `node scripts/dev-server`. Seen in the browser: the placeholder face and player sprites. The imp was only looked at on desktop.
 - **M3 done.** Two browser tabs joined one room through the local router and saw each other's placeholder player in a co-op game on E1M1.
-- **M4 not started.** Needs a Cloudflare account, a domain and `DOOM_KEY`. The Worker (site + router) passes the router contract under `wrangler dev`; it has never been deployed.
+- **M4 not started.** Needs a Cloudflare account and `DOOM_KEY`; steps are in [docs/deploy.md](docs/deploy.md). The Worker (site + router) passes the router contract under `wrangler dev`; it has never been deployed.
+- **M5 started.** No final art. The art pipeline works end to end (`import-art`, palette and player-colour mapping, placeholders for the rest), and two generated samples sit in `art-samples/`. Which generator to use is Karin's call and still open; options are in [docs/art.md](docs/art.md).
 
 To get the engine on a new machine: `gh run download --name engine --dir build/engine` (latest successful `engine` run), then `node scripts/build-site`.
 
 ## Findings worth knowing
 
+- The purchased `doom.wad` on this PC comes from Steam: `C:Program Files (x86)SteamsteamappscommonUltimate DoomaseDOOM.WAD`, copied to `iwads/doom.wad`. Use the one in `base`, not `rerelease`. `build-site` refuses any IWAD without a `FREEDOOM` lump.
+- In first person a player only ever sees their own status bar face and fist. The `PLAY` body sprites are what other players see, plus the corpse decorations in maps.
 - `freedoom1.wad` is 28.8 MB, over Cloudflare's 25 MiB per-file limit for static assets. `build-site` splits big WADs into parts and `site/lobby.js` joins them before the engine starts.
 - The engine's build flags (`EXTRA_EXPORTED_RUNTIME_METHODS`) are rejected by current Emscripten, so `engine.emsdk-version` pins a 2021 release. Current Emscripten was not tried.
 - `site/lobby.js` is wrapped in one function scope on purpose: the engine script declares globals such as `runtimeInitialized`, and a clashing `const` in the lobby stops the engine from loading.- DeuTex finds an IWAD only by fixed file names. `build-wad` gives it a small `doom.wad` in `build/stage/` holding the chosen IWAD's palette.

@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+'use strict'
+// Brings one generated or hand-drawn image into assets/ as art for a lump.
+//
+//   import-art <image> <LUMP> [--height 56] [--crop x,y,w,h] [--assets dir] [--iwad file]
+//
+// The image should show the subject on a flat magenta background. It is cut
+// out, shrunk to Doom scale and snapped to the game palette, with green skin
+// kept in the ramp the engine recolours per player. The PNG lands in
+// assets/sprites or assets/graphics and its offsets go into wadinfo.txt.
+//
+// Size and offsets come from the lump being replaced:
+//   - world sprites (PLAYA0): scaled to the original's height, or --height,
+//     with the feet on the floor
+//   - first-person sprites (PUNGA0) and graphics (STFST00): fitted to the
+//     original's exact box, keeping its offsets
+// --crop picks a region of the source first, in source pixels.
+
+const fs = require('fs')
+const path = require('path')
+const sharp = require('sharp')
+const wadlib = require('./lib/wad')
+const { encodePng } = require('./lib/png')
+const { readWadinfo, formatWadinfo } = require('./lib/wadinfo')
+const { doomify, toRgba } = require('./lib/doomify')
+const { rel, parseArgs, resolveIwad, fail } = require('./lib/env')
+
+const WADINFO_COMMENT = 'DeuTex directives for toads.wad: every lump and its x and y offsets.\nNAME  x  y. Kept in step with the PNG folders by scripts/import-art and scripts/check-assets.'
+
+// What the lump replaces: its section and the original picture's header.
+function findTarget(wad, lumpName) {
+  const parsed = wadlib.parseSpriteName(lumpName)
+  const frame = parsed && wadlib.spriteFrames(wad, parsed.prefix).get(parsed.views[0].frame)
+  if (frame) return { section: 'sprites', original: wadlib.pictureHeader(wad, frame.lump) }
+  const lump = wadlib.findLump(wad, lumpName)
+  const original = lump && !wadlib.isSpriteLump(wad, lump) && wadlib.pictureHeader(wad, lump)
+  if (original) return { section: 'graphics', original }
+  return null
+}
+
+async function importArt(source, lumpName, { iwadFile, assetsDir, height, crop }) {
+  const wad = wadlib.readWad(iwadFile)
+  const target = findTarget(wad, lumpName)
+  if (!target) fail(`${path.basename(iwadFile)} has no sprite frame or picture called ${lumpName}`)
+  const { section, original } = target
+
+  let input = source
+  if (crop) {
+    const [left, top, width, cropHeight] = crop.split(',').map(Number)
+    input = await sharp(source).extract({ left, top, width, height: cropHeight }).png().toBuffer()
+  }
+  // A world sprite stands on the floor: its top offset is positive.
+  const inWorld = section === 'sprites' && original.top > 0
+  const fit = inWorld ? { height: height || original.height } : { width: original.width, height: original.height }
+  const art = await doomify(input, wadlib.playpal(wad), fit)
+  const offsets = inWorld
+    ? { x: Math.round(art.width / 2), y: art.height - (original.height - original.top) }
+    : { x: original.left, y: original.top }
+
+  const file = path.join(assetsDir, section, `${lumpName}.png`)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, encodePng(art.width, art.height, toRgba(art, wadlib.playpal(wad))))
+
+  const infoFile = path.join(assetsDir, 'wadinfo.txt')
+  const sections = readWadinfo(infoFile)
+  if (!sections.has(section)) sections.set(section, [])
+  const entries = sections.get(section).filter((e) => e.name !== lumpName)
+  entries.push({ name: lumpName, ...offsets })
+  entries.sort((a, b) => a.name.localeCompare(b.name))
+  sections.set(section, entries)
+  fs.writeFileSync(infoFile, formatWadinfo(sections, WADINFO_COMMENT))
+  return { file, width: art.width, height: art.height, ...offsets }
+}
+
+if (require.main === module) {
+  const { opts, rest } = parseArgs(process.argv.slice(2), ['height', 'crop', 'assets', 'iwad'])
+  if (rest.length !== 2) fail('usage: import-art <image> <LUMP> [--height 56] [--crop x,y,w,h] [--assets dir] [--iwad file]')
+  const assetsDir = path.resolve(opts.assets || rel('assets'))
+  importArt(path.resolve(rest[0]), rest[1].toUpperCase(), {
+    iwadFile: resolveIwad(opts.iwad),
+    assetsDir,
+    height: opts.height ? Number(opts.height) : null,
+    crop: opts.crop,
+  }).then((r) => {
+    console.log(`import-art: ${path.relative(process.cwd(), r.file)} ${r.width}x${r.height}, offsets ${r.x} ${r.y}`)
+  })
+}
+
+module.exports = { importArt }

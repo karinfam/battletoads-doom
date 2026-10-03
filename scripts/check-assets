@@ -2,7 +2,7 @@
 'use strict'
 // Compares the art in assets/ to the frame list in the base IWAD.
 //
-//   check-assets [--iwad file] [--assets dir] [--require "PLAY PUNG STFST"]
+//   check-assets [--iwad file] [--assets dir] [--require "PLAY PUNG STFST" | p0]
 //
 // Every prefix that has at least one PNG must be complete: one rotation 0 PNG
 // per frame the IWAD has for that prefix, and nothing the IWAD lacks. Prefixes
@@ -15,7 +15,7 @@ const path = require('path')
 const wadlib = require('./lib/wad')
 const { readPngInfo } = require('./lib/png')
 const { readWadinfo } = require('./lib/wadinfo')
-const { rel, parseArgs, resolveIwad } = require('./lib/env')
+const { rel, parseArgs, parsePrefixes, resolveIwad } = require('./lib/env')
 
 function pngNames(dir) {
   if (!fs.existsSync(dir)) return []
@@ -26,6 +26,7 @@ function pngNames(dir) {
 function checkAssets(iwadFile, assetsDir, required = []) {
   const wad = wadlib.readWad(iwadFile)
   const problems = []
+  const missingArt = new Set() // the problems a placeholder can paper over
   const checked = []
   const sprites = pngNames(path.join(assetsDir, 'sprites'))
   const graphics = pngNames(path.join(assetsDir, 'graphics'))
@@ -58,7 +59,10 @@ function checkAssets(iwadFile, assetsDir, required = []) {
     }
     const missing = expected.filter((f) => !have.has(f))
     const extra = [...have].filter((f) => !expected.includes(f))
-    if (missing.length) problems.push(`${prefix}: missing frames ${missing.join(' ')} (need ${missing.map((f) => `${prefix}${f}0.png`).join(', ')})`)
+    if (missing.length) {
+      problems.push(`${prefix}: missing frames ${missing.join(' ')} (need ${missing.map((f) => `${prefix}${f}0.png`).join(', ')})`)
+      missingArt.add(problems[problems.length - 1])
+    }
     if (extra.length) problems.push(`${prefix}: extra frames ${extra.join(' ')} that the IWAD does not have`)
     checked.push(`${prefix} (${expected.length} frames)`)
   }
@@ -78,7 +82,10 @@ function checkAssets(iwadFile, assetsDir, required = []) {
       continue
     }
     const missing = expected.filter((n) => !graphics.includes(n))
-    if (missing.length) problems.push(`${prefix}: missing graphics ${missing.join(' ')}`)
+    if (missing.length) {
+      problems.push(`${prefix}: missing graphics ${missing.join(' ')}`)
+      missingArt.add(problems[problems.length - 1])
+    }
     checked.push(`${prefix} (${expected.length} graphics)`)
   }
 
@@ -101,12 +108,12 @@ function checkAssets(iwadFile, assetsDir, required = []) {
       if (!names.includes(entry.name)) problems.push(`wadinfo.txt: [${section}] lists ${entry.name} but ${section}/${entry.name}.png does not exist`)
     }
   }
-  return { problems, checked }
+  return { problems, missingArt, checked }
 }
 
 if (require.main === module) {
   const { opts } = parseArgs(process.argv.slice(2), ['iwad', 'assets', 'require'])
-  const required = (opts.require || '').split(/[\s,]+/).filter(Boolean).map((p) => p.toUpperCase())
+  const required = parsePrefixes(opts.require)
   const iwad = resolveIwad(opts.iwad)
   const { problems, checked } = checkAssets(iwad, path.resolve(opts.assets || rel('assets')), required)
   for (const problem of problems) console.error(`check-assets: ${problem}`)

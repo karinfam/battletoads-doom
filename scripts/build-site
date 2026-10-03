@@ -12,6 +12,7 @@
 const fs = require('fs')
 const path = require('path')
 const { sha256 } = require('./lib/fetch')
+const { readWad, findLump } = require('./lib/wad')
 const { rel, parseArgs, resolveIwad, fail } = require('./lib/env')
 
 // Cloudflare static assets cap each file at 25 MiB. Stay under it.
@@ -56,7 +57,13 @@ function addWad(name, source) {
   return { name, parts }
 }
 
-const files = [addWad('freedoom1.wad', resolveIwad(opts.iwad))]
+// dist/ is what gets hosted, and only Freedoom may be hosted. Every Freedoom
+// IWAD carries a FREEDOOM lump; a purchased doom.wad does not.
+const iwadFile = resolveIwad(opts.iwad)
+if (!findLump(readWad(iwadFile), 'FREEDOOM')) {
+  fail(`${path.basename(iwadFile)} is not Freedoom. The site only ships Freedoom; a purchased WAD must never be hosted.`)
+}
+const files = [addWad('freedoom1.wad', iwadFile)]
 const toads = rel('build', 'toads.wad')
 if (fs.existsSync(toads)) files.push(addWad('toads.wad', toads))
 else console.warn('build-site: no build/toads.wad, the site will run the base game only')
