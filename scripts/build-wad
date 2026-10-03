@@ -1,0 +1,55 @@
+#!/usr/bin/env node
+'use strict'
+// Builds build/toads.wad from assets/ with DeuTex.
+//
+//   build-wad [--iwad file] [--placeholders "TROO PLAY"] [--s-end]
+//
+// Steps: check assets, copy them to build/stage, add placeholder art for any
+// prefixes asked for, then run DeuTex in the stage folder. DeuTex only finds
+// an IWAD by fixed file names, so the stage gets a small doom.wad holding the
+// chosen IWAD's palette lumps.
+
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
+const wadlib = require('./lib/wad')
+const { readWadinfo } = require('./lib/wadinfo')
+const { checkAssets } = require('./check-assets')
+const { makePlaceholders } = require('./make-placeholders')
+const { rel, parseArgs, resolveIwad, findTool, fail } = require('./lib/env')
+
+const { opts } = parseArgs(process.argv.slice(2), ['iwad', 'placeholders'])
+const placeholders = (opts.placeholders || process.env.PLACEHOLDERS || '')
+  .split(/[\s,]+/).filter(Boolean).map((p) => p.toUpperCase())
+const iwadFile = resolveIwad(opts.iwad)
+const stage = rel('build', 'stage')
+const out = rel('build', 'toads.wad')
+
+const { problems } = checkAssets(iwadFile, rel('assets'))
+for (const problem of problems) console.error(`check-assets: ${problem}`)
+if (problems.length) fail('assets failed the check, not building')
+
+fs.rmSync(stage, { recursive: true, force: true })
+fs.cpSync(rel('assets'), stage, { recursive: true })
+if (placeholders.length) {
+  const written = makePlaceholders(iwadFile, stage, placeholders)
+  console.log(`build-wad: added ${written.length} placeholder image(s) for ${placeholders.join(' ')}`)
+}
+const sections = readWadinfo(path.join(stage, 'wadinfo.txt'))
+const lumpCount = [...sections.values()].reduce((n, entries) => n + entries.length, 0)
+if (!lumpCount) fail('nothing to build: assets/ has no art yet. Pass PLACEHOLDERS="TROO PLAY" to build test art.')
+
+const iwad = wadlib.readWad(iwadFile)
+const paletteLumps = ['PLAYPAL', 'COLORMAP', 'PNAMES', 'TEXTURE1']
+  .map((name) => wadlib.findLump(iwad, name))
+  .filter(Boolean)
+  .map((lump) => ({ name: lump.name, data: wadlib.lumpData(iwad, lump) }))
+wadlib.writeWad(path.join(stage, 'doom.wad'), 'IWAD', paletteLumps)
+
+fs.rmSync(out, { force: true })
+const args = [...(opts['s-end'] ? ['-s_end'] : []), '-build', 'wadinfo.txt', path.join('..', 'toads.wad')]
+const run = spawnSync(findTool('deutex', 'DEUTEX'), args, { cwd: stage, stdio: 'inherit' })
+if (run.status !== 0 || !fs.existsSync(out)) fail(`deutex failed (exit ${run.status})`)
+
+const built = wadlib.readWad(out)
+console.log(`build-wad: wrote build/toads.wad with ${wadlib.spriteLumps(built).length} sprite(s), ${built.lumps.length} lump(s) in total, palette from ${path.basename(iwadFile)}`)

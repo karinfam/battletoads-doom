@@ -1,0 +1,12 @@
+# DeuTex directives for toads.wad: every lump and its x and y offsets.
+#
+#   NAME  x  y
+#
+# The PNG for a lump is sprites/NAME.png or graphics/NAME.png. Start each
+# lump's offsets from the lump it replaces in the IWAD. Sprites are rotation 0
+# lumps (PLAYA0), one per frame. scripts/check-assets keeps this file and the
+# PNG folders in step.
+
+[sprites]
+
+[graphics]

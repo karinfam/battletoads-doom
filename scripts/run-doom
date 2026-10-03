@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+'use strict'
+// Runs desktop Chocolate Doom on the base game, with build/toads.wad merged
+// when it exists.
+//
+//   run-doom [--iwad file] [--no-wad] [-- extra engine arguments]
+//
+// Sprites in a patch WAD only load with -merge, never -file.
+
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
+const { rel, parseArgs, resolveIwad, findTool } = require('./lib/env')
+
+const split = process.argv.indexOf('--')
+const own = split === -1 ? process.argv.slice(2) : process.argv.slice(2, split)
+const extra = split === -1 ? (process.env.ARGS || '').split(/\s+/).filter(Boolean) : process.argv.slice(split + 1)
+const { opts } = parseArgs(own, ['iwad'])
+
+const iwad = resolveIwad(opts.iwad)
+const wad = rel('build', 'toads.wad')
+const args = ['-iwad', iwad]
+if (!opts['no-wad'] && fs.existsSync(wad)) args.push('-merge', wad)
+else console.log('run-doom: no build/toads.wad merged, running the base game as is')
+if (!extra.includes('-warp')) args.push('-warp', '1', '1')
+args.push(...extra)
+
+const exe = findTool('chocolate-doom', 'CHOCOLATE_DOOM')
+console.log(`run-doom: ${path.basename(exe)} ${args.join(' ')}`)
+// Run from build/run so anything the engine writes to its working directory
+// stays out of the repo root.
+fs.mkdirSync(rel('build', 'run'), { recursive: true })
+const run = spawnSync(exe, args, { cwd: rel('build', 'run'), stdio: 'inherit' })
+process.exit(run.status === null ? 1 : run.status)

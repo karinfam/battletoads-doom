@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+'use strict'
+// Compares the art in assets/ to the frame list in the base IWAD.
+//
+//   check-assets [--iwad file] [--assets dir] [--require "PLAY PUNG STFST"]
+//
+// Every prefix that has at least one PNG must be complete: one rotation 0 PNG
+// per frame the IWAD has for that prefix, and nothing the IWAD lacks. Prefixes
+// named by --require are checked even when they have no PNGs yet. Each PNG
+// must also be listed in wadinfo.txt with offsets, and the other way round.
+// Exits 1 if anything is wrong.
+
+const fs = require('fs')
+const path = require('path')
+const wadlib = require('./lib/wad')
+const { readPngInfo } = require('./lib/png')
+const { readWadinfo } = require('./lib/wadinfo')
+const { rel, parseArgs, resolveIwad } = require('./lib/env')
+
+function pngNames(dir) {
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir).filter((f) => /\.png$/i.test(f)).map((f) => f.slice(0, -4).toUpperCase())
+}
+
+// -> { problems: [string], checked: [string] }
+function checkAssets(iwadFile, assetsDir, required = []) {
+  const wad = wadlib.readWad(iwadFile)
+  const problems = []
+  const checked = []
+  const sprites = pngNames(path.join(assetsDir, 'sprites'))
+  const graphics = pngNames(path.join(assetsDir, 'graphics'))
+  const info = readWadinfo(path.join(assetsDir, 'wadinfo.txt'))
+
+  // Sprites: group PNGs by prefix, then compare frame letters with the IWAD.
+  const framesByPrefix = new Map()
+  for (const name of sprites) {
+    const parsed = wadlib.parseSpriteName(name)
+    if (!parsed) {
+      problems.push(`sprites/${name}.png: not a sprite lump name (PREFIX + frame letter + rotation digit)`)
+      continue
+    }
+    if (parsed.views.length !== 1 || parsed.views[0].rot !== 0) {
+      problems.push(`sprites/${name}.png: v1 art is single-angle, so the lump must be ${parsed.prefix}${parsed.views[0].frame}0`)
+      continue
+    }
+    if (!framesByPrefix.has(parsed.prefix)) framesByPrefix.set(parsed.prefix, new Set())
+    framesByPrefix.get(parsed.prefix).add(parsed.views[0].frame)
+  }
+  const isSpritePrefix = (p) => p.length === 4 && wadlib.spriteFrames(wad, p).size > 0
+  for (const prefix of required.filter(isSpritePrefix)) {
+    if (!framesByPrefix.has(prefix)) framesByPrefix.set(prefix, new Set())
+  }
+  for (const [prefix, have] of framesByPrefix) {
+    const expected = [...wadlib.spriteFrames(wad, prefix).keys()]
+    if (!expected.length) {
+      problems.push(`${prefix}: the IWAD has no sprite with this prefix`)
+      continue
+    }
+    const missing = expected.filter((f) => !have.has(f))
+    const extra = [...have].filter((f) => !expected.includes(f))
+    if (missing.length) problems.push(`${prefix}: missing frames ${missing.join(' ')} (need ${missing.map((f) => `${prefix}${f}0.png`).join(', ')})`)
+    if (extra.length) problems.push(`${prefix}: extra frames ${extra.join(' ')} that the IWAD does not have`)
+    checked.push(`${prefix} (${expected.length} frames)`)
+  }
+
+  // Graphics: each PNG must replace a picture lump outside the sprite block.
+  const spriteSet = new Set(wadlib.spriteLumps(wad))
+  const pictureNames = new Set(
+    wad.lumps.filter((l) => !spriteSet.has(l) && wadlib.pictureHeader(wad, l)).map((l) => l.name),
+  )
+  for (const name of graphics) {
+    if (!pictureNames.has(name)) problems.push(`graphics/${name}.png: the IWAD has no picture lump with this name`)
+  }
+  for (const prefix of required.filter((p) => !isSpritePrefix(p))) {
+    const expected = [...pictureNames].filter((n) => n.startsWith(prefix))
+    if (!expected.length) {
+      problems.push(`${prefix}: the IWAD has no sprite or picture lumps with this prefix`)
+      continue
+    }
+    const missing = expected.filter((n) => !graphics.includes(n))
+    if (missing.length) problems.push(`${prefix}: missing graphics ${missing.join(' ')}`)
+    checked.push(`${prefix} (${expected.length} graphics)`)
+  }
+
+  // wadinfo.txt and the PNG folders must agree.
+  for (const [section, names] of [['sprites', sprites], ['graphics', graphics]]) {
+    const entries = info.get(section) || []
+    for (const name of names) {
+      const entry = entries.find((e) => e.name === name)
+      if (!entry) problems.push(`wadinfo.txt: no [${section}] entry for ${name}`)
+      else if (entry.x === null) problems.push(`wadinfo.txt: ${name} has no x and y offsets`)
+      let png = null
+      try {
+        png = readPngInfo(path.join(assetsDir, section, `${name}.png`))
+      } catch (err) {
+        problems.push(`${section}/${name}.png: not a readable PNG`)
+      }
+      if (png && (png.colourType !== 6 || png.bitDepth !== 8)) problems.push(`${section}/${name}.png: must be 8-bit truecolour with alpha`)
+    }
+    for (const entry of entries) {
+      if (!names.includes(entry.name)) problems.push(`wadinfo.txt: [${section}] lists ${entry.name} but ${section}/${entry.name}.png does not exist`)
+    }
+  }
+  return { problems, checked }
+}
+
+if (require.main === module) {
+  const { opts } = parseArgs(process.argv.slice(2), ['iwad', 'assets', 'require'])
+  const required = (opts.require || '').split(/[\s,]+/).filter(Boolean).map((p) => p.toUpperCase())
+  const iwad = resolveIwad(opts.iwad)
+  const { problems, checked } = checkAssets(iwad, path.resolve(opts.assets || rel('assets')), required)
+  for (const problem of problems) console.error(`check-assets: ${problem}`)
+  if (problems.length) {
+    console.error(`check-assets: ${problems.length} problem(s) against ${path.basename(iwad)}`)
+    process.exit(1)
+  }
+  console.log(`check-assets: ok against ${path.basename(iwad)}${checked.length ? `: ${checked.join(', ')}` : ' (no art yet)'}`)
+}
+
+module.exports = { checkAssets }

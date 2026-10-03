@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Battletoads Doom</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Doom with a Battletoad, playable co-op in the browser from a shared link. Unofficial fan project." />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="noselect">
+    <div id="container">
+      <div id="monitor">
+        <div id="monitorscreen">
+          <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+          <div id="menu">
+            <div id="logo" class="vspace" style="display:none">
+              <span class="logo-top">Battletoads</span>
+              <span class="logo-bottom">Doom</span>
+            </div>
+            <div id="buttons" style="display:none">
+              <a class="btn grey" id="multiplayer">Start Multiplayer</a>
+              <a class="btn grey" id="solo">Play Solo</a>
+            </div>
+            <div id="text" style="display:none">
+              <h1>Doom with a Battletoad, in your browser</h1>
+              <h1>Up to <span class="h">four players</span> co-op from a shared link, no install</h1>
+              <h1 class="vspace small">Unofficial fan project. Free and non-commercial. Not affiliated with Rare, Microsoft or id Software.</h1>
+              <h1 class="small">Runs on <a target="_blank" rel="noopener" href="https://freedoom.github.io/">Freedoom</a> and <a target="_blank" rel="noopener" href="https://github.com/cloudflare/doom-wasm">doom-wasm</a>. <a id="source" target="_blank" rel="noopener" style="display:none">Source code</a></h1>
+            </div>
+          </div>
+        </div>
+        <div id="footer" class="writer"></div>
+      </div>
+    </div>
+    <script src="wads.js"></script>
+    <script src="lobby.js"></script>
+    <script src="websockets-doom.js"></script>
+  </body>
+</html>

@@ -1,0 +1,159 @@
+#!/usr/bin/env node
+'use strict'
+// Generates labelled test PNGs for any lump prefix, so the pipeline and the
+// engine can be tested before real art exists.
+//
+//   make-placeholders [--iwad file] [--out dir] PREFIX...
+//
+// For a sprite prefix (TROO, PLAY, PUNG) it writes one rotation 0 image per
+// frame the IWAD has. For anything else (STFST, STFOUCH) it writes one image
+// per picture lump whose name starts with the prefix. Each image takes its
+// size and offsets from the lump it stands in for. Images land in
+// <out>/sprites or <out>/graphics and are listed in <out>/wadinfo.txt.
+// Existing PNGs are left alone, so real art always wins over a placeholder.
+
+const fs = require('fs')
+const path = require('path')
+const wadlib = require('./lib/wad')
+const { encodePng } = require('./lib/png')
+const { readWadinfo, formatWadinfo } = require('./lib/wadinfo')
+const { rel, parseArgs, resolveIwad, fail } = require('./lib/env')
+
+// 3x5 pixel font, one string of 15 bits per glyph, row by row.
+const FONT = {
+  A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110',
+  E: '111100110100111', F: '111100110100100', G: '011100101101011', H: '101101111101101',
+  I: '111010010010111', J: '001001001101010', K: '101101110101101', L: '100100100100111',
+  M: '101111111101101', N: '110101101101101', O: '010101101101010', P: '110101110100100',
+  Q: '010101101110011', R: '110101110101101', S: '011100010001110', T: '111010010010010',
+  U: '101101101101111', V: '101101101101010', W: '101101111111101', X: '101101010101101',
+  Y: '101101010010010', Z: '111001010100111',
+  0: '111101101101111', 1: '010110010010111', 2: '110001010100111', 3: '110001010001110',
+  4: '101101111001001', 5: '111100110001110', 6: '011100111101111', 7: '111001010010010',
+  8: '111101111101111', 9: '111101111001110',
+}
+const UNKNOWN_GLYPH = '111111111111111'
+
+// Palette indices. PLAY uses the green ramp (112-127), which the engine
+// recolours per player, so a co-op game shows the placeholders in four colours.
+const WHITE = 4
+const BLACK = 0
+const GREEN_RAMP = 112
+const BODY_COLOURS = [176, 200, 216, 231, 252, 40]
+
+function bodyColour(prefix) {
+  let hash = 0
+  for (const ch of prefix) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+  return BODY_COLOURS[hash % BODY_COLOURS.length]
+}
+
+// Returns a width * height array of palette indices.
+function drawPlaceholder(name, width, height) {
+  const prefix = name.slice(0, 4)
+  const px = new Uint8Array(width * height)
+  const set = (x, y, c) => {
+    if (x >= 0 && x < width && y >= 0 && y < height) px[y * width + x] = c
+  }
+  for (let y = 0; y < height; y++) {
+    const fill = prefix === 'PLAY' ? GREEN_RAMP + Math.floor((y * 16) / height) : bodyColour(prefix)
+    for (let x = 0; x < width; x++) {
+      const edge = x === 0 || y === 0 || x === width - 1
+      set(x, y, edge ? BLACK : fill)
+    }
+  }
+  // White bottom rows mark where the feet should meet the floor.
+  for (let x = 0; x < width; x++) {
+    set(x, height - 1, WHITE)
+    set(x, height - 2, WHITE)
+  }
+  const drawText = (text, top, maxScale) => {
+    const scale = Math.max(1, Math.min(maxScale, Math.floor((width - 2) / (text.length * 4 - 1))))
+    const left = Math.floor((width - (text.length * 4 - 1) * scale) / 2)
+    ;[...text].forEach((ch, i) => {
+      const glyph = FONT[ch] || UNKNOWN_GLYPH
+      for (let b = 0; b < 15; b++) {
+        if (glyph[b] !== '1') continue
+        for (let dy = 0; dy < scale; dy++) {
+          for (let dx = 0; dx < scale; dx++) {
+            set(left + (i * 4 + (b % 3)) * scale + dx, top + Math.floor(b / 3) * scale + dy, WHITE)
+          }
+        }
+      }
+    })
+    return top + 5 * scale + 2
+  }
+  const next = drawText(prefix, 3, 2)
+  if (name.length > 4) drawText(name.slice(4), next, 5)
+  return px
+}
+
+function toPng(indices, width, height, palette) {
+  const rgba = Buffer.alloc(width * height * 4)
+  indices.forEach((index, i) => {
+    rgba[i * 4] = palette[index][0]
+    rgba[i * 4 + 1] = palette[index][1]
+    rgba[i * 4 + 2] = palette[index][2]
+    rgba[i * 4 + 3] = 255
+  })
+  return encodePng(width, height, rgba)
+}
+
+// -> [{ section: 'sprites' | 'graphics', name, header }] for one prefix.
+function placeholderTargets(wad, prefix) {
+  const targets = []
+  if (prefix.length === 4) {
+    for (const [frame, { lump }] of wadlib.spriteFrames(wad, prefix)) {
+      const header = wadlib.pictureHeader(wad, lump)
+      if (header) targets.push({ section: 'sprites', name: `${prefix}${frame}0`, header })
+    }
+  }
+  if (targets.length) return targets
+  const sprites = new Set(wadlib.spriteLumps(wad))
+  const seen = new Set()
+  for (const lump of wad.lumps) {
+    if (!lump.name.startsWith(prefix) || sprites.has(lump) || seen.has(lump.name)) continue
+    const header = wadlib.pictureHeader(wad, wadlib.findLump(wad, lump.name))
+    if (header) {
+      seen.add(lump.name)
+      targets.push({ section: 'graphics', name: lump.name, header })
+    }
+  }
+  return targets
+}
+
+function makePlaceholders(iwadFile, outDir, prefixes) {
+  const wad = wadlib.readWad(iwadFile)
+  const palette = wadlib.playpal(wad)
+  const infoFile = path.join(outDir, 'wadinfo.txt')
+  const sections = readWadinfo(infoFile)
+  const written = []
+  for (const prefix of prefixes) {
+    const targets = placeholderTargets(wad, prefix)
+    if (!targets.length) fail(`${path.basename(iwadFile)} has no sprite or picture lumps starting with ${prefix}`)
+    for (const { section, name, header } of targets) {
+      const file = path.join(outDir, section, `${name}.png`)
+      if (fs.existsSync(file)) continue
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      const indices = drawPlaceholder(name, header.width, header.height)
+      fs.writeFileSync(file, toPng(indices, header.width, header.height, palette))
+      if (!sections.has(section)) sections.set(section, [])
+      const entries = sections.get(section)
+      if (!entries.some((e) => e.name === name)) entries.push({ name, x: header.left, y: header.top })
+      written.push(name)
+    }
+  }
+  fs.mkdirSync(outDir, { recursive: true })
+  fs.writeFileSync(infoFile, formatWadinfo(sections, 'DeuTex directives. Placeholder entries added by scripts/make-placeholders.'))
+  return written
+}
+
+if (require.main === module) {
+  const { opts, rest } = parseArgs(process.argv.slice(2), ['iwad', 'out'])
+  const prefixes = rest.flatMap((p) => p.split(/[\s,]+/)).filter(Boolean).map((p) => p.toUpperCase())
+  if (!prefixes.length) fail('usage: make-placeholders [--iwad file] [--out dir] PREFIX...')
+  const outDir = path.resolve(opts.out || rel('build', 'placeholders'))
+  const written = makePlaceholders(resolveIwad(opts.iwad), outDir, prefixes)
+  console.log(`placeholders: wrote ${written.length} image(s) for ${prefixes.join(' ')} to ${path.relative(process.cwd(), outDir) || '.'}`)
+}
+
+module.exports = { drawPlaceholder, placeholderTargets, makePlaceholders }

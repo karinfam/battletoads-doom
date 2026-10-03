@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+'use strict'
+// Downloads the pinned Freedoom release and unpacks freedoom1.wad into iwads/.
+// The archive hash comes from the release's signed CHECKSUM file.
+
+const fs = require('fs')
+const path = require('path')
+const { download, zipEntries, sha256 } = require('./lib/fetch')
+const { rel, FREEDOOM_VERSION } = require('./lib/env')
+
+const ZIP = `freedoom-${FREEDOOM_VERSION}.zip`
+const URL = `https://github.com/freedoom/freedoom/releases/download/v${FREEDOOM_VERSION}/${ZIP}`
+const ZIP_SHA256 = '3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59'
+
+async function main() {
+  const target = rel('iwads', 'freedoom1.wad')
+  const stamp = rel('iwads', 'freedoom1.version')
+  if (fs.existsSync(target) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === FREEDOOM_VERSION) {
+    console.log(`fetch-freedoom: iwads/freedoom1.wad is already ${FREEDOOM_VERSION}`)
+    return
+  }
+  const zip = await download(URL, rel('iwads', ZIP), ZIP_SHA256)
+  const entry = zipEntries(zip).find((e) => path.basename(e.name) === 'freedoom1.wad')
+  if (!entry) throw new Error(`${ZIP} has no freedoom1.wad`)
+  const wad = entry.data()
+  fs.writeFileSync(target, wad)
+  fs.writeFileSync(stamp, `${FREEDOOM_VERSION}\n`)
+  console.log(`fetch-freedoom: wrote iwads/freedoom1.wad (${FREEDOOM_VERSION}, ${wad.length} bytes, sha256 ${sha256(wad).slice(0, 16)}...)`)
+}
+
+main().catch((err) => {
+  console.error(`fetch-freedoom: ${err.message}`)
+  process.exit(1)
+})

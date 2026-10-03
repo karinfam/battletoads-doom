@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+'use strict'
+// Assembles dist/: page, lobby script, engine files and both WADs.
+//
+//   build-site [--iwad file] [--no-engine]
+//
+// Each WAD gets a content hash in its file name, so a stale cache can never
+// mix versions between players. Files over the host's per-file limit are
+// split into parts that the lobby script joins again. dist/wads.js tells the
+// lobby which files to fetch.
+
+const fs = require('fs')
+const path = require('path')
+const { sha256 } = require('./lib/fetch')
+const { rel, parseArgs, resolveIwad, fail } = require('./lib/env')
+
+// Cloudflare static assets cap each file at 25 MiB. Stay under it.
+const PART_BYTES = 20 * 1024 * 1024
+const ENGINE_FILES = ['websockets-doom.js', 'websockets-doom.wasm', 'websockets-doom.wasm.map']
+
+const { opts } = parseArgs(process.argv.slice(2), ['iwad'])
+const dist = rel('dist')
+
+fs.rmSync(dist, { recursive: true, force: true })
+fs.cpSync(rel('site'), dist, { recursive: true })
+
+// The engine build lands in engine/src; a prebuilt copy can sit in build/engine.
+if (!opts['no-engine']) {
+  const engineDir = [rel('build', 'engine'), rel('engine', 'src')].find((dir) =>
+    fs.existsSync(path.join(dir, 'websockets-doom.wasm')),
+  )
+  if (!engineDir) fail('engine build not found in build/engine or engine/src. Run `make engine` first.')
+  for (const file of ENGINE_FILES) {
+    const src = path.join(engineDir, file)
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dist, file))
+    else if (!file.endsWith('.map')) fail(`${src} is missing`)
+  }
+}
+
+// name: what the engine opens. source: where the bytes come from.
+function addWad(name, source) {
+  const data = fs.readFileSync(source)
+  const stem = `${path.basename(name, '.wad')}.${sha256(data).slice(0, 12)}`
+  const parts = []
+  if (data.length <= PART_BYTES) {
+    parts.push(`${stem}.wad`)
+    fs.writeFileSync(path.join(dist, parts[0]), data)
+  } else {
+    for (let offset = 0; offset < data.length; offset += PART_BYTES) {
+      const part = `${stem}.wad.part${parts.length}`
+      fs.writeFileSync(path.join(dist, part), data.subarray(offset, offset + PART_BYTES))
+      parts.push(part)
+    }
+  }
+  console.log(`build-site: ${name} -> ${parts.join(', ')} (${data.length} bytes)`)
+  return { name, parts }
+}
+
+const files = [addWad('freedoom1.wad', resolveIwad(opts.iwad))]
+const toads = rel('build', 'toads.wad')
+if (fs.existsSync(toads)) files.push(addWad('toads.wad', toads))
+else console.warn('build-site: no build/toads.wad, the site will run the base game only')
+
+// The engine is GPL-2.0: the page must link to the source of what it serves.
+const source = process.env.SOURCE_URL || require(rel('package.json')).repository || ''
+if (!source) console.warn('build-site: no SOURCE_URL or package.json "repository". Set one before deploying (GPL).')
+
+fs.writeFileSync(path.join(dist, 'wads.js'), `window.WADS = ${JSON.stringify({ files, source }, null, 2)};\n`)
+console.log(`build-site: wrote dist/ (${fs.readdirSync(dist).length} files)`)

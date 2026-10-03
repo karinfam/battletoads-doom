@@ -1,0 +1,265 @@
+/* Adapted from assets/romero.css in https://github.com/cloudflare/doom,
+   Copyright (c) 2021 Cloudflare, BSD-3-Clause (see LICENSE-cloudflare).
+   Changes: text logo, toad colours, no mobile or touch layout. */
+
+@font-face {
+    font-family: "VT323";
+    font-style: normal;
+    font-weight: 400;
+    src: url(https://fonts.gstatic.com/s/vt323/v12/pxiKyp0ihIEF2isfFJXUdVNF.woff2) format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    font-family: "VT323", monospace;
+    font-size: 12px;
+}
+
+body {
+    background-color: #111;
+    margin: 0;
+    padding: 2ch;
+}
+
+#menu {
+    width: auto;
+    background-color: black;
+    padding-top: 60px;
+}
+
+#logo {
+    text-align: center;
+    text-transform: uppercase;
+    line-height: 0.85;
+}
+
+#logo span {
+    display: block;
+}
+
+.logo-top {
+    color: #3fbf3f;
+    font-size: 72px;
+    text-shadow: 4px 4px 0 #0b4f0b;
+}
+
+.logo-bottom {
+    color: #d75810;
+    font-size: 120px;
+    text-shadow: 5px 5px 0 #6b1c00;
+}
+
+#text {
+    color: white;
+    text-align: center;
+    padding-top: 20px;
+    margin: auto;
+    width: auto;
+    text-transform: uppercase;
+}
+
+h1 {
+    margin: auto;
+    color: white;
+    padding-top: 10px;
+    width: auto;
+}
+
+h1 a {
+    color: white;
+    cursor: pointer;
+}
+
+h1.small {
+    font-size: 1.4rem;
+    color: #999;
+}
+
+h1.small a {
+    color: #999;
+}
+
+#buttons {
+    width: auto;
+    text-align: center;
+    margin: auto;
+    padding-top: 15px;
+}
+
+#container {
+    max-width: 930px;
+    margin: auto;
+}
+
+#monitor {
+    background: #000;
+    position: relative;
+    border-top: 3px solid #444;
+    margin: 5%;
+    padding: 2% 2% 4% 2%;
+    border-radius: 10px;
+    border-bottom-left-radius: 50% 2%;
+    border-bottom-right-radius: 50% 2%;
+    display: none;
+}
+
+#monitor:after {
+    content: "";
+    display: block;
+    position: absolute;
+    bottom: 3%;
+    left: 36%;
+    height: 0.5%;
+    width: 28%;
+    background: #666;
+    border-radius: 20%;
+    box-shadow: 0 0 3px 0 white;
+}
+
+#monitorscreen {
+    position: relative;
+    background-color: #000;
+    height: 0;
+    padding-bottom: 75.2%;
+    overflow: hidden;
+}
+
+@media all and (min-width: 960px) {
+    #monitor {
+        animation: tvflicker 3s infinite alternate;
+    }
+
+    @keyframes tvflicker {
+        0% {
+            box-shadow: 0 0 100px 0 rgba(63, 191, 63, 0.35);
+        }
+        100% {
+            box-shadow: 0 0 60px 0 rgba(11, 79, 11, 0.6);
+        }
+    }
+}
+
+/* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+canvas {
+    background-color: black;
+    width: 100%;
+}
+
+.vspace {
+    margin-top: 20px !important;
+}
+
+.h {
+    color: #7fdf7f !important;
+}
+
+.btn {
+    background: #7c7c7c;
+    border-bottom: 6px inset rgba(0, 0, 0, 0.5);
+    border-left: 6px inset rgba(0, 0, 0, 0.5);
+    border-right: 6px inset rgba(255, 255, 255, 0.5);
+    border-top: 6px inset rgba(255, 255, 255, 0.5);
+    box-sizing: border-box;
+    color: white;
+    cursor: pointer;
+    display: inline-block;
+    font-size: 2.2rem;
+    margin: 1rem;
+    padding: 0.5rem 15px;
+    text-transform: uppercase;
+    width: auto;
+}
+
+.btn:focus,
+.btn:hover {
+    background: #bcbcbc;
+}
+
+.btn.grey {
+    background: #666666;
+}
+
+.btn.grey:focus,
+.btn.grey:hover {
+    background: #555555;
+}
+
+.btn.primary {
+    background: #881400;
+}
+
+.btn.primary:focus,
+.btn.primary:hover {
+    background: #a81000;
+}
+
+.btn.secondary {
+    background: #005800;
+}
+
+.btn.secondary:focus,
+.btn.secondary:hover {
+    background: #006800;
+}
+
+.btn.tertiary {
+    background: #0000bc;
+}
+
+.btn.tertiary:focus,
+.btn.tertiary:hover {
+    background: #0000fc;
+}
+
+.noselect {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#footer {
+    text-align: center;
+    margin: auto;
+    width: auto;
+    text-transform: uppercase;
+    background-color: #000;
+    color: #d75810;
+    font-size: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    position: relative;
+    min-height: 28px;
+}
+
+.writer {
+    animation: animated-text 2s steps(30, end) 1s 1 normal both;
+}
+
+@keyframes animated-text {
+    from {
+        width: 0;
+    }
+    to {
+        width: 100%;
+    }
+}
+
+.pinput {
+    padding-top: 25px;
+    padding-bottom: 25px;
+}
+
+input[type="text"] {
+    font-family: "VT323", monospace;
+    font-size: 26px;
+    outline-width: 0;
+    color: white;
+    border: 3px solid white;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.1), 0 0 16px rgba(0, 0, 0, 0.1);
+    padding: 9px;
+    background: rgba(0, 0, 0, 0.5);
+    margin: 0 0 10px 0;
+}

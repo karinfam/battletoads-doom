@@ -1,0 +1,14 @@
+# Local only: base games (never commit a purchased doom.wad) and fetched tools
+iwads/
+tools/
+
+# Build output. Source PNGs in assets/ are the source of truth.
+build/
+dist/
+
+node_modules/
+
+# Wrangler: local state and local secrets (DOOM_KEY)
+.wrangler/
+.dev.vars
+.env

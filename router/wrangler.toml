@@ -1,0 +1,27 @@
+# One Worker serves the site (static assets from dist/) and the router
+# (/api/*, one Durable Object per room), so both share an origin.
+#
+# Rewritten from upstream's wrangler-router.toml for current Wrangler. New
+# accounts can only create Durable Object classes with new_sqlite_classes,
+# which is also what the Workers Free plan needs. The router stores nothing.
+
+name = "battletoads-doom"
+main = "index.mjs"
+compatibility_date = "2026-09-01"
+
+# Requests that match a file in dist/ are served directly. Everything else,
+# which means /api/*, reaches the Worker.
+[assets]
+directory = "../dist"
+
+[[durable_objects.bindings]]
+name = "router"
+class_name = "Router"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Router"]
+
+# DOOM_KEY salts room ids. It is a secret, never committed:
+#   production: npx wrangler secret put DOOM_KEY --config router/wrangler.toml
+#   local:      copy router/.dev.vars.example to router/.dev.vars

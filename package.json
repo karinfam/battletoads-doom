@@ -1,0 +1,24 @@
+{
+  "private": true,
+  "name": "battletoads-doom",
+  "version": "0.1.0",
+  "description": "Doom 1 reskinned with a Battletoad, playable in multiplayer from a browser link",
+  "scripts": {
+    "iwad": "node scripts/fetch-freedoom",
+    "tools": "node scripts/fetch-tools",
+    "check": "node scripts/check-assets",
+    "wad": "node scripts/build-wad",
+    "run-doom": "node scripts/run-doom",
+    "engine": "node scripts/build-engine",
+    "site": "node scripts/build-site",
+    "dev": "node scripts/dev-server",
+    "dev-worker": "wrangler dev --config router/wrangler.toml",
+    "deploy": "node scripts/build-site && wrangler deploy --config router/wrangler.toml",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "^4.147.0",
+    "ws": "^8.22.0"
+  },
+  "repository": "https://github.com/karinfam/battletoads-doom"
+}

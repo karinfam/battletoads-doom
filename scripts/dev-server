@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+'use strict'
+// Local stand-in for production: serves dist/ and routes game packets between
+// browser tabs, all on one port like the deployed Worker.
+//
+//   dev-server [--port 8000] [--root dist]
+//
+// Ported from scripts/router.js in https://github.com/cloudflare/doom
+// (Copyright (c) 2021 Cloudflare, BSD-3-Clause). It mirrors router/index.mjs:
+// the same three API routes and the same packet envelope, but rooms are kept
+// in memory and room ids are not signed.
+
+const crypto = require('crypto')
+const fs = require('fs')
+const http = require('http')
+const path = require('path')
+const WebSocket = require('ws')
+const { rel, parseArgs } = require('./lib/env')
+
+const MIMES = {
+  html: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  wasm: 'application/wasm',
+  wad: 'application/octet-stream',
+  cfg: 'text/plain',
+  map: 'application/json',
+  png: 'image/png',
+  ico: 'image/x-icon',
+}
+
+// room id -> { sessions: [{ ws, from }], gameStarted }
+function createRooms() {
+  const rooms = new Map()
+  return {
+    create() {
+      const id = `${crypto.randomBytes(8).toString('hex')}-${crypto.randomBytes(4).toString('hex')}`
+      rooms.set(id, { sessions: [], gameStarted: false })
+      return id
+    },
+    get: (id) => rooms.get(id),
+  }
+}
+
+// Envelope: 4 bytes To, 4 bytes From, little-endian, then the Doom packet.
+// The To field is stripped before forwarding.
+function handleSession(roomState, ws) {
+  ws.on('message', (data) => {
+    if (data.length < 8) return
+    const to = data.readUInt32LE(0)
+    const from = data.readUInt32LE(4)
+    if (from === 1 && to === 0) {
+      // first packet from a new Doom server: the room restarts
+      roomState.sessions.forEach((s) => s.ws.close(1011, 'closing'))
+      roomState.sessions = []
+    }
+    if (!roomState.sessions.some((s) => s.from === from)) roomState.sessions.push({ ws, from })
+    const target = roomState.sessions.find((s) => s.from === to)
+    if (target && target.ws.readyState === WebSocket.OPEN) target.ws.send(data.subarray(4))
+  })
+  const drop = () => {
+    roomState.sessions = roomState.sessions.filter((s) => s.ws !== ws)
+  }
+  ws.on('close', drop)
+  ws.on('error', drop)
+}
+
+function jsonReply(response, json, status) {
+  response.writeHead(status, { 'Content-Type': 'application/json;charset=UTF-8' })
+  response.end(JSON.stringify(json))
+}
+
+function createServer(root) {
+  const rooms = createRooms()
+  const wss = new WebSocket.Server({ noServer: true, perMessageDeflate: false })
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url, 'http://localhost')
+    const parts = url.pathname.slice(1).split('/')
+    if (parts[0] === 'api') {
+      if (parts[1] === 'newroom') return jsonReply(response, { room: rooms.create() }, 200)
+      const roomState = parts[1] === 'room' && rooms.get(parts[2])
+      if (!roomState) return jsonReply(response, { reason: parts[1] === 'room' ? 'invalid room' : 'api not found' }, 404)
+      if (parts[3] === 'started') roomState.gameStarted = true
+      return jsonReply(response, { room: parts[2], gameStarted: roomState.gameStarted }, 200)
+    }
+    const file = path.join(root, path.normalize(url.pathname === '/' ? 'index.html' : url.pathname))
+    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      response.writeHead(404, { 'Content-Type': 'text/plain' })
+      return response.end('not found')
+    }
+    response.writeHead(200, {
+      'Content-Type': MIMES[file.split('.').pop()] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    })
+    fs.createReadStream(file).pipe(response)
+  })
+  server.on('upgrade', (request, socket, head) => {
+    const parts = new URL(request.url, 'http://localhost').pathname.slice(1).split('/')
+    const roomState = parts[0] === 'api' && parts[1] === 'ws' && rooms.get(parts[2])
+    if (!roomState) return socket.destroy()
+    wss.handleUpgrade(request, socket, head, (ws) => handleSession(roomState, ws))
+  })
+  return server
+}
+
+if (require.main === module) {
+  const { opts } = parseArgs(process.argv.slice(2), ['port', 'root'])
+  const port = Number(opts.port || process.env.PORT || 8000)
+  const root = path.resolve(opts.root || rel('dist'))
+  if (!fs.existsSync(path.join(root, 'index.html'))) {
+    console.error(`dev-server: ${root} has no index.html. Run \`make site\` first.`)
+    process.exit(1)
+  }
+  createServer(root).listen(port, () => {
+    console.log(`dev-server: http://localhost:${port} (site from ${path.relative(process.cwd(), root) || '.'}, router on /api)`)
+  })
+}
+
+module.exports = { createServer }

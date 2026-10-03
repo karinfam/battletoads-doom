@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+'use strict'
+// Compiles the doom-wasm fork in engine/ and copies the outputs to
+// build/engine/, where build-site picks them up.
+//
+// The build needs Emscripten plus autotools, so it runs in one of two ways:
+//   1. natively, when emcc and bash are on PATH (Linux, macOS, WSL, MSYS2)
+//   2. in the emscripten/emsdk Docker image, when docker is on PATH
+// On a Windows machine with neither, use the GitHub Actions workflow in
+// .github/workflows/engine.yml and unpack its artifact into build/engine/.
+
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
+const { rel, fail } = require('./lib/env')
+
+// Recorded here so every build uses the same compiler. See the risk table in
+// docs/design.md: if this version cannot compile the fork, pin an older one.
+const EMSDK_VERSION = fs.readFileSync(rel('engine.emsdk-version'), 'utf8').trim()
+const OUTPUTS = ['websockets-doom.js', 'websockets-doom.wasm', 'websockets-doom.wasm.map']
+const BUILD = './scripts/clean.sh && ./scripts/build.sh'
+
+const has = (cmd) => spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd]).status === 0
+const engine = rel('engine')
+if (!fs.existsSync(path.join(engine, 'scripts', 'build.sh'))) {
+  fail('engine/ is empty. Run `git submodule update --init` first.')
+}
+
+let run
+if (has('emcc') && has('bash')) {
+  run = spawnSync('bash', ['-c', BUILD], { cwd: engine, stdio: 'inherit' })
+} else if (has('docker')) {
+  const setup = 'apt-get update -qq && apt-get install -y -qq automake autoconf libtool pkg-config libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev'
+  run = spawnSync(
+    'docker',
+    ['run', '--rm', '-v', `${engine}:/src`, '-w', '/src', `emscripten/emsdk:${EMSDK_VERSION}`, 'bash', '-c', `${setup} && ${BUILD}`],
+    { stdio: 'inherit' },
+  )
+} else {
+  fail('need emcc and bash, or docker, to compile the engine. On Windows without either, run the "engine" GitHub Actions workflow and unpack its artifact into build/engine/.')
+}
+if (run.status !== 0) fail(`engine build failed (exit ${run.status})`)
+
+fs.mkdirSync(rel('build', 'engine'), { recursive: true })
+for (const file of OUTPUTS) {
+  const src = path.join(engine, 'src', file)
+  if (fs.existsSync(src)) fs.copyFileSync(src, rel('build', 'engine', file))
+  else if (!file.endsWith('.map')) fail(`${src} was not produced`)
+}
+console.log('build-engine: copied engine files to build/engine/')

@@ -1,0 +1,38 @@
+#!/usr/bin/env node
+'use strict'
+// Windows convenience: downloads pinned Chocolate Doom and DeuTex builds into
+// tools/, where the other scripts look first. On Linux and macOS install both
+// from your package manager instead (apt install chocolate-doom deutex,
+// brew install chocolate-doom deutex).
+
+const { download, unzipFlat } = require('./lib/fetch')
+const { rel, fail } = require('./lib/env')
+
+const TOOLS = [
+  {
+    dir: 'chocolate-doom',
+    zip: 'chocolate-doom-3.1.1-win64.zip',
+    url: 'https://github.com/chocolate-doom/chocolate-doom/releases/download/chocolate-doom-3.1.1/chocolate-doom-3.1.1-win64.zip',
+    sha256: '58c34c61ae954493fce5ff01fd553898240a0de25658aa97b43ac9510c49581f',
+  },
+  {
+    dir: 'deutex',
+    zip: 'deutex-5.2.3_w32.zip',
+    url: 'https://github.com/Doom-Utils/deutex/releases/download/v5.2.3/deutex-5.2.3_w32.zip',
+    sha256: '9c07f354fd81384a0e91844b7c152114da1a3566343de846db443de38b82a1ad',
+  },
+]
+
+async function main() {
+  if (process.platform !== 'win32') fail('fetch-tools only has Windows builds. Use your package manager.')
+  for (const tool of TOOLS) {
+    const zip = await download(tool.url, rel('tools', tool.zip), tool.sha256)
+    unzipFlat(zip, rel('tools', tool.dir))
+    console.log(`fetch-tools: unpacked ${tool.zip} into tools/${tool.dir}`)
+  }
+}
+
+main().catch((err) => {
+  console.error(`fetch-tools: ${err.message}`)
+  process.exit(1)
+})

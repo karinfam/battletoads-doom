@@ -1,0 +1,2 @@
+# Copy to .dev.vars for `make dev-worker`. Any value works locally.
+DOOM_KEY=local-dev-only
