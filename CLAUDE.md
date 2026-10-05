@@ -8,8 +8,9 @@ Every target is a Node script in `scripts/`, so `make <target>`, `npm run <targe
 
 | Command | Does |
 | --- | --- |
+| `node scripts/setup` | Fresh clone to playable `dist/` in one go: tools, Freedoom, WAD, engine download, site. Skips what exists. |
 | `node scripts/fetch-freedoom` | Downloads the pinned Freedoom into `iwads/`. |
-| `node scripts/fetch-tools` | Windows only: pinned Chocolate Doom and DeuTex into `tools/`. |
+| `node scripts/fetch-tools` | Chocolate Doom and DeuTex. Windows: pinned builds into `tools/`. macOS: Homebrew deps and Chocolate Doom, then DeuTex compiled from the pinned source into `tools/deutex/` (Homebrew has no deutex). Linux: use apt. |
 | `node scripts/check-assets` | Compares `assets/` to the IWAD's frame list. `--require p0` demands all 69 player lumps. |
 | `node scripts/import-art <image> <LUMP>` | Turns an image on a magenta background into Doom-scale art in `assets/`. See [docs/art.md](docs/art.md). |
 | `node scripts/build-wad` | Checks assets, then builds `build/toads.wad` with DeuTex. Player lumps without art get labelled placeholders; `--placeholders none` is the strict release build, `--placeholders "p0 TROO"` adds a test imp. |

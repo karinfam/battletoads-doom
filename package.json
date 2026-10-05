@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Doom 1 reskinned with a Battletoad, playable in multiplayer from a browser link",
   "scripts": {
+    "setup": "node scripts/setup",
     "iwad": "node scripts/fetch-freedoom",
     "tools": "node scripts/fetch-tools",
     "check": "node scripts/check-assets",

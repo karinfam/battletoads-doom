@@ -13,7 +13,10 @@ ARGS ?=
 
 export IWAD PLACEHOLDERS ARGS
 
-.PHONY: iwad tools check check-p0 wad run engine site dev dev-worker deploy test clean
+.PHONY: setup iwad tools check check-p0 wad run engine site dev dev-worker deploy test clean
+
+setup:
+	node scripts/setup
 
 iwad:
 	node scripts/fetch-freedoom

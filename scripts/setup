@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+'use strict'
+// One command from a fresh clone to a playable local site. Runs, in order:
+//
+//   fetch-tools      Chocolate Doom and DeuTex for this platform
+//   fetch-freedoom   the base game into iwads/
+//   build-wad        build/toads.wad from assets/
+//   engine download  the prebuilt browser engine into build/engine/ (needs gh)
+//   build-site       dist/, ready for `node scripts/dev-server`
+//
+// Each step is skipped when its output already exists, so it is safe to run
+// again. Stops at the first failure.
+
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
+const { ROOT, rel, fail } = require('./lib/env')
+
+function step(label, cmd, args, { skipIf } = {}) {
+  if (skipIf && fs.existsSync(skipIf)) {
+    console.log(`\nsetup: ${label}: already have ${path.relative(ROOT, skipIf)}, skipping`)
+    return
+  }
+  console.log(`\nsetup: ${label}`)
+  const result = spawnSync(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' })
+  if (result.error) fail(`${label}: ${result.error.message}`)
+  if (result.status !== 0) fail(`${label} failed. Fix the error above and run \`node scripts/setup\` again.`)
+}
+
+if (!fs.existsSync(rel('node_modules'))) fail('run `npm install` first')
+
+step('tools', process.execPath, [rel('scripts', 'fetch-tools')])
+step('Freedoom', process.execPath, [rel('scripts', 'fetch-freedoom')])
+step('WAD', process.execPath, [rel('scripts', 'build-wad')])
+step('engine', 'gh', ['run', 'download', '--name', 'engine', '--dir', rel('build', 'engine')], {
+  skipIf: rel('build', 'engine', 'websockets-doom.wasm'),
+})
+step('site', process.execPath, [rel('scripts', 'build-site')])
+
+console.log('\nsetup: done. Start the game with `node scripts/dev-server` and open http://localhost:8000')

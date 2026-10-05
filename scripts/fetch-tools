@@ -1,15 +1,28 @@
 #!/usr/bin/env node
 'use strict'
-// Windows convenience: downloads pinned Chocolate Doom and DeuTex builds into
-// tools/, where the other scripts look first. On Linux install both from your
-// package manager (apt install chocolate-doom deutex). On macOS, Homebrew has
-// chocolate-doom but no deutex; build it from source into tools/deutex/ as
-// described in README.md.
+// Puts Chocolate Doom and DeuTex where the other scripts look for them.
+//
+//   fetch-tools [--force]
+//
+// Windows: downloads pinned builds of both into tools/.
+// macOS:   installs Chocolate Doom and the build dependencies with Homebrew,
+//          then compiles the pinned DeuTex source release into tools/deutex/,
+//          because Homebrew has no deutex formula.
+// Linux:   both come from the package manager (apt install chocolate-doom
+//          deutex); this script only says so.
+//
+// Already-present tools are kept unless --force is given.
 
+const fs = require('fs')
+const path = require('path')
+const { spawnSync } = require('child_process')
 const { download, unzipFlat } = require('./lib/fetch')
-const { rel, fail } = require('./lib/env')
+const { rel, fail, parseArgs } = require('./lib/env')
 
-const TOOLS = [
+const DEUTEX_VERSION = '5.2.3'
+const DEUTEX_RELEASE = `https://github.com/Doom-Utils/deutex/releases/download/v${DEUTEX_VERSION}`
+
+const WINDOWS_TOOLS = [
   {
     dir: 'chocolate-doom',
     zip: 'chocolate-doom-3.1.1-win64.zip',
@@ -18,19 +31,86 @@ const TOOLS = [
   },
   {
     dir: 'deutex',
-    zip: 'deutex-5.2.3_w32.zip',
-    url: 'https://github.com/Doom-Utils/deutex/releases/download/v5.2.3/deutex-5.2.3_w32.zip',
+    zip: `deutex-${DEUTEX_VERSION}_w32.zip`,
+    url: `${DEUTEX_RELEASE}/deutex-${DEUTEX_VERSION}_w32.zip`,
     sha256: '9c07f354fd81384a0e91844b7c152114da1a3566343de846db443de38b82a1ad',
   },
 ]
 
-async function main() {
-  if (process.platform !== 'win32') fail('fetch-tools only has Windows builds. Use your package manager.')
-  for (const tool of TOOLS) {
+const DEUTEX_SOURCE = {
+  tar: `deutex-${DEUTEX_VERSION}.tar.zst`,
+  url: `${DEUTEX_RELEASE}/deutex-${DEUTEX_VERSION}.tar.zst`,
+  sha256: '935dcae490fb574e8ad90ef54bdeb599c7055fedca117d79ce837cbc19d070ab',
+}
+
+// Homebrew formulae: zstd so tar can open the source archive, libpng and
+// pkgconf so DeuTex can read PNGs, and the desktop engine itself.
+const BREW_FORMULAE = ['zstd', 'libpng', 'pkgconf', 'chocolate-doom']
+
+const { opts } = parseArgs(process.argv.slice(2))
+
+function run(cmd, args, cwd) {
+  console.log(`fetch-tools: ${cmd} ${args.join(' ')}`)
+  const result = spawnSync(cmd, args, { cwd, stdio: 'inherit' })
+  if (result.error) fail(`${cmd}: ${result.error.message}`)
+  if (result.status !== 0) fail(`${cmd} ${args.join(' ')} failed (exit ${result.status})`)
+}
+
+const onPath = (cmd) => spawnSync('which', [cmd]).status === 0
+
+async function windows() {
+  for (const tool of WINDOWS_TOOLS) {
+    const dir = rel('tools', tool.dir)
+    if (!opts.force && fs.existsSync(path.join(dir, `${tool.dir}.exe`))) {
+      console.log(`fetch-tools: tools/${tool.dir} is already there`)
+      continue
+    }
     const zip = await download(tool.url, rel('tools', tool.zip), tool.sha256)
-    unzipFlat(zip, rel('tools', tool.dir))
+    unzipFlat(zip, dir)
     console.log(`fetch-tools: unpacked ${tool.zip} into tools/${tool.dir}`)
   }
+}
+
+async function macos() {
+  if (!onPath('brew')) fail('Homebrew is needed on macOS. Install it from https://brew.sh and run this again.')
+
+  const installed = new Set(
+    (spawnSync('brew', ['list', '--formula', '-1'], { encoding: 'utf8' }).stdout || '').split('\n').map((s) => s.trim()),
+  )
+  const missing = BREW_FORMULAE.filter((f) => !installed.has(f))
+  if (missing.length) run('brew', ['install', ...missing])
+  else console.log(`fetch-tools: Homebrew already has ${BREW_FORMULAE.join(', ')}`)
+
+  const binary = rel('tools', 'deutex', 'deutex')
+  if (!opts.force && fs.existsSync(binary)) {
+    console.log('fetch-tools: tools/deutex/deutex is already there')
+    return
+  }
+
+  // Build in build/deutex-src so the source tree never lands in the repo.
+  await download(DEUTEX_SOURCE.url, rel('tools', DEUTEX_SOURCE.tar), DEUTEX_SOURCE.sha256)
+  const srcRoot = rel('build', 'deutex-src')
+  fs.rmSync(srcRoot, { recursive: true, force: true })
+  fs.mkdirSync(srcRoot, { recursive: true })
+  run('tar', ['-xf', rel('tools', DEUTEX_SOURCE.tar), '-C', srcRoot])
+  const src = path.join(srcRoot, `deutex-${DEUTEX_VERSION}`)
+  if (!fs.existsSync(path.join(src, 'configure'))) fail(`${src} has no configure script`)
+
+  // --with-libpng turns a missing libpng into a hard error instead of a
+  // silently PNG-less build that cannot read assets/.
+  run('./configure', ['--with-libpng'], src)
+  run('make', ['-j4'], src)
+
+  fs.mkdirSync(path.dirname(binary), { recursive: true })
+  fs.copyFileSync(path.join(src, 'src', 'deutex'), binary)
+  fs.chmodSync(binary, 0o755)
+  console.log(`fetch-tools: built DeuTex ${DEUTEX_VERSION} into tools/deutex/deutex`)
+}
+
+async function main() {
+  if (process.platform === 'win32') return windows()
+  if (process.platform === 'darwin') return macos()
+  fail('on Linux install both from your package manager: sudo apt install chocolate-doom deutex')
 }
 
 main().catch((err) => {

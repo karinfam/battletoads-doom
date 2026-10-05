@@ -12,93 +12,62 @@ The base game is [Freedoom](https://freedoom.github.io/), so nothing purchased i
 
 The design is in [docs/design.md](docs/design.md). Art workflow: [docs/art.md](docs/art.md). Deploying: [docs/deploy.md](docs/deploy.md).
 
-## Prerequisites
+## Quick start
 
-- **Node.js 22** (the version the CI uses) and npm.
-- **Chocolate Doom** and **DeuTex**, for desktop play and for building the WAD. The scripts look for both in `tools/<name>/`, then on your PATH, or at the paths in `CHOCOLATE_DOOM` and `DEUTEX` if set.
-  - Windows: `node scripts/fetch-tools` downloads pinned builds into `tools/`.
-  - Debian/Ubuntu: `sudo apt install chocolate-doom deutex`
-  - macOS: `brew install chocolate-doom` for the engine. Homebrew has no DeuTex, so build it from source into `tools/deutex/`, where the scripts find it:
+You need three things installed first. Everything else is fetched or built by one command.
 
-    ```bash
-    brew install libpng pkgconf zstd
-    curl -L -o /tmp/deutex.tar.zst https://github.com/Doom-Utils/deutex/releases/download/v5.2.3/deutex-5.2.3.tar.zst
-    tar --use-compress-program=unzstd -xf /tmp/deutex.tar.zst -C /tmp
-    (cd /tmp/deutex-5.2.3 && ./configure && make)
-    mkdir -p tools/deutex && cp /tmp/deutex-5.2.3/src/deutex tools/deutex/
-    ```
+| | macOS | Windows |
+| --- | --- | --- |
+| Node.js 22 or newer | `brew install node` or https://nodejs.org | `winget install OpenJS.NodeJS.LTS` or https://nodejs.org |
+| Git | `brew install git` | `winget install Git.Git` |
+| GitHub CLI, logged in | `brew install gh && gh auth login` | `winget install GitHub.cli` then `gh auth login` |
 
-    Check that `configure` printed `checking for libpng >= 1.6.0... yes`. Without libpng DeuTex builds but cannot read the PNGs.
-- **GitHub CLI (`gh`)**, only to download the prebuilt engine without compiling it.
-- **Emscripten or Docker**, only if you want to compile the engine yourself.
+macOS also needs [Homebrew](https://brew.sh) itself, which the setup uses to install Chocolate Doom and DeuTex's build dependencies.
 
-Every command below is a Node script in `scripts/`. `make <target>`, `npm run <target>` and `node scripts/<name>` do the same thing, so pick whichever you have. The commands are written as `node scripts/...` because that works everywhere, including Windows without `make`.
-
-## Setup
-
-Clone with the engine submodule and install dependencies:
+Then, on either platform, paste this into a terminal:
 
 ```bash
 git clone --recurse-submodules https://github.com/karinfam/battletoads-doom.git
 cd battletoads-doom
 npm install
+node scripts/setup
+node scripts/dev-server
 ```
 
-If you already cloned without the submodule:
+Open http://localhost:8000, click Start Multiplayer, and open the invite link in a second tab to play against yourself. Co-op is the default; deathmatch is a toggle in the lobby.
 
-```bash
-git submodule update --init
-```
+`node scripts/setup` does five things, skipping any that are already done, so it is safe to run again after a `git pull`:
 
-Download Freedoom into `iwads/`:
+1. **Tools.** Chocolate Doom and DeuTex. On Windows it downloads pinned builds into `tools/`. On macOS it installs Chocolate Doom and the build dependencies with Homebrew, then compiles DeuTex 5.2.3 from its checksummed source release into `tools/deutex/`, because Homebrew has no DeuTex. On Linux, install both with `sudo apt install chocolate-doom deutex` and run setup afterwards.
+2. **Freedoom** 0.13.0 into `iwads/`, the free base game.
+3. **The WAD.** `build/toads.wad` from the art in `assets/`. Player frames without art yet get labelled placeholder boxes, so the build always covers the whole player.
+4. **The engine.** Downloads the latest browser build from the `engine` GitHub Actions workflow into `build/engine/`. This is the step that needs `gh`. To compile it yourself instead, with `emcc` and `bash` on your PATH or with Docker installed, run `node scripts/build-engine` before setup.
+5. **The site.** Assembles `dist/`, which the dev server serves.
 
-```bash
-node scripts/fetch-freedoom
-```
+The GitHub CLI is only needed for step 4. If you build the engine yourself, skip installing it.
 
-## Play in the browser (multiplayer)
+## Commands
 
-1. **Build the WAD** from the art in `assets/`. Player frames without art yet get labelled placeholder boxes, so the build always covers the whole player:
+Every command is a Node script in `scripts/`. `make <target>`, `npm run <target>` and `node scripts/<name>` do the same thing, so pick whichever you have. They are written here as `node scripts/...` because that works everywhere, including Windows without `make`.
 
-   ```bash
-   node scripts/build-wad
-   ```
+| Command | Does |
+| --- | --- |
+| `node scripts/setup` | Everything in Quick start, from tools to `dist/`. |
+| `node scripts/fetch-tools` | Chocolate Doom and DeuTex for this platform. `--force` rebuilds or redownloads. |
+| `node scripts/fetch-freedoom` | Freedoom into `iwads/`. |
+| `node scripts/check-assets` | Lists which player frames in `assets/` still have no art. |
+| `node scripts/build-wad` | `build/toads.wad`. `--placeholders none` is the strict release build that refuses missing art. |
+| `node scripts/build-site` | `dist/` with content-hashed WAD names. |
+| `node scripts/dev-server` | Serves `dist/` and an in-memory router on http://localhost:8000. |
+| `node scripts/run-doom` | Desktop Chocolate Doom with the WAD merged. |
+| `npm run dev-worker` | The real Cloudflare Worker under `wrangler dev`. Needs `DOOM_KEY=<random string>` in `router/.dev.vars`. |
+| `npm test` | Unit tests. No game files needed. |
 
-2. **Get the engine.** The easiest way is to download the latest build from the `engine` GitHub Actions workflow:
-
-   ```bash
-   gh run download --name engine --dir build/engine
-   ```
-
-   To compile it yourself instead, with `emcc` and `bash` on your PATH or with Docker installed:
-
-   ```bash
-   node scripts/build-engine
-   ```
-
-3. **Assemble the site** into `dist/`:
-
-   ```bash
-   node scripts/build-site
-   ```
-
-4. **Start the local server**, which serves `dist/` and runs an in-memory copy of the router on one port:
-
-   ```bash
-   node scripts/dev-server
-   ```
-
-   Open http://localhost:8000, click Start Multiplayer, and open the invite link in a second tab to play against yourself. Co-op is the default; deathmatch is a toggle in the lobby.
-
-To run the real Cloudflare Worker locally instead of the Node stand-in, put a `DOOM_KEY=<random string>` line in `router/.dev.vars` and run:
-
-```bash
-npm run dev-worker
-```
+The scripts look for Chocolate Doom and DeuTex in `tools/<name>/` first, then on your PATH, or at the paths in the `CHOCOLATE_DOOM` and `DEUTEX` environment variables if set.
 
 ## Play on the desktop
 
-After `node scripts/build-wad`, run desktop Chocolate Doom with the WAD merged:
+After `node scripts/setup`, run desktop Chocolate Doom with the WAD merged:
 
 ```bash
 node scripts/run-doom
