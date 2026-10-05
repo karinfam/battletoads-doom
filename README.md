@@ -15,10 +15,20 @@ The design is in [docs/design.md](docs/design.md). Art workflow: [docs/art.md](d
 ## Prerequisites
 
 - **Node.js 22** (the version the CI uses) and npm.
-- **Chocolate Doom** and **DeuTex**, for desktop play and for building the WAD.
-  - macOS: `brew install chocolate-doom deutex`
-  - Debian/Ubuntu: `sudo apt install chocolate-doom deutex`
+- **Chocolate Doom** and **DeuTex**, for desktop play and for building the WAD. The scripts look for both in `tools/<name>/`, then on your PATH, or at the paths in `CHOCOLATE_DOOM` and `DEUTEX` if set.
   - Windows: `node scripts/fetch-tools` downloads pinned builds into `tools/`.
+  - Debian/Ubuntu: `sudo apt install chocolate-doom deutex`
+  - macOS: `brew install chocolate-doom` for the engine. Homebrew has no DeuTex, so build it from source into `tools/deutex/`, where the scripts find it:
+
+    ```bash
+    brew install libpng pkgconf zstd
+    curl -L -o /tmp/deutex.tar.zst https://github.com/Doom-Utils/deutex/releases/download/v5.2.3/deutex-5.2.3.tar.zst
+    tar --use-compress-program=unzstd -xf /tmp/deutex.tar.zst -C /tmp
+    (cd /tmp/deutex-5.2.3 && ./configure && make)
+    mkdir -p tools/deutex && cp /tmp/deutex-5.2.3/src/deutex tools/deutex/
+    ```
+
+    Check that `configure` printed `checking for libpng >= 1.6.0... yes`. Without libpng DeuTex builds but cannot read the PNGs.
 - **GitHub CLI (`gh`)**, only to download the prebuilt engine without compiling it.
 - **Emscripten or Docker**, only if you want to compile the engine yourself.
 

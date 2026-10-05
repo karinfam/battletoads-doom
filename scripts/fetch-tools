@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 'use strict'
 // Windows convenience: downloads pinned Chocolate Doom and DeuTex builds into
-// tools/, where the other scripts look first. On Linux and macOS install both
-// from your package manager instead (apt install chocolate-doom deutex,
-// brew install chocolate-doom deutex).
+// tools/, where the other scripts look first. On Linux install both from your
+// package manager (apt install chocolate-doom deutex). On macOS, Homebrew has
+// chocolate-doom but no deutex; build it from source into tools/deutex/ as
+// described in README.md.
 
 const { download, unzipFlat } = require('./lib/fetch')
 const { rel, fail } = require('./lib/env')
